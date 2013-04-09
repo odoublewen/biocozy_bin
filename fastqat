@@ -1,0 +1,223 @@
+#! /usr/bin/perl -w
+use strict ;
+use Getopt::Long ;
+use File::Basename;
+
+# Written by O. D. Solberg 3/1/2012
+
+# VARIABLES , DEFAULTS
+
+my $BIN_PATH = dirname(__FILE__);
+
+my ( @infile, @index, @beds, $nobed, $threads, $errorflag, $help, $verbose, $childpid, $noalign, $align , $paired) ;
+
+$align = 'sensitive';
+$threads = 1 ;
+
+sub system_bash {
+  my @args = ( "bash", "-c", shift );
+  system(@args);
+}
+
+$errorflag = 0 ;
+
+GetOptions ( 
+ 'index=s' => \@index ,
+ 'threads=i' => \$threads ,
+ 'align=s' => \$align ,
+ 'verbose' => \$verbose ,
+ 'nobed' => \$nobed ,
+ 'noalign' => \$noalign ,
+ 'help' => \$help ,
+ 'paired' => \$paired
+) ;
+
+
+# MESSAGES , ARGUMENTS
+if ($help or @ARGV==0) { 
+ print <<EOF;
+
+fastqat maps high-throughput sequence data to one or more genomes
+(with bowtie2), categorizes the hits (with bedtools), and graphs a
+summary of the results (with R/ggplot2).
+
+User must supply bowtie index and (optionally) bed files that have
+filenames with the same prefix as the bowtie index.  
+/path/to/indices/hg19.1.bt2      )
+/path/to/indices/hg19.2.bt2      ) 
+/path/to/indices/hg19.3.bt2      ) Example: if "hg19" is the 
+/path/to/indices/hg19.4.bt2      ) base name of your index...
+/path/to/indices/hg19.rev.1.bt2  )
+/path/to/indices/hg19.rev.2.bt2  )
+/path/to/indices/hg19_1_mito.bed        )
+/path/to/indices/hg19_2_miRNA.bed       )
+/path/to/indices/hg19_3_tRNA.bed        ) ...all bed files should
+/path/to/indices/hg19_4_lincRNA.bed     ) start with hg19 and
+/path/to/indices/hg19_5_exon.bed        ) end with .bed
+/path/to/indices/hg19_6_intron.bed      )
+/path/to/indices/hg19_7_intergenic.bed  )
+
+Usage:  fastqat -index <bowtie_index> <infile(s)>
+
+Required arguments:
+
+-index <base name of bowtie index | comma sep list of indices>
+ Provide the base name of the index (for example, hg19, not
+ hg19.1.ebwt).  Comma-separated list (no spaces) results in
+ multi-stage alignments.
+
+Optional arguments:
+
+-paired
+ Paired reads; give fastqat a list of the _1 reads, it will find
+ the mate by replacing _1 with _2.
+
+-nobed
+ Do not use bed files, even if they are present.
+
+-threads <int>  Default = $threads.  Optional.
+ Threads to be use during the bowtie alignment stages.
+
+-align <str>  Default = $align.  Optional.
+ bowtie2 alignment string.
+
+EOF
+exit();
+}
+
+if ( @index )  {
+    @index = split(/,/,join(',',@index));
+    foreach (@index) {
+	unless (-f $_ . ".1.bt2") {
+	    print "Error: cannot find index '$_'\n";
+	    $errorflag = 1 ; 
+	}
+    }
+} else {
+    print STDERR "Error: Must specify -index\n" ; 
+    $errorflag = 1 ; 
+}
+
+if (scalar @ARGV > 0) { 
+    @infile = @ARGV ;
+    foreach (@infile) {
+	unless (-f $_ ) {print "Error: cannot find file '$_'\n"; $errorflag = 1 ; }
+    }
+} else {
+    print STDERR "Error: must specify infile(s)\n" ;
+    $errorflag = 1 ;
+}    
+
+if ($errorflag) {
+    print STDERR "Errors encountered.  Try fastqat -help for help on usage\n" ;
+    exit(1);
+}
+
+
+## DONE ERROR CHECKING -- NOW DO THE LOOPS
+my $counter ;
+my $indexbase ;
+my $infilebase ;
+my $outfile ;
+my $unhit ;
+my $unhitstring ;
+my $command;
+my @counts;
+my $bedtoolscmd;
+my $basebed;
+my $scoresumfile ;
+my $quotemetaindex ;
+my $reads ;
+my $rawreads ;
+my $bamcount ;
+my $unmapped ;
+my $bowtie2inputstring ;
+
+open OUT, "> fastqat_summary.txt" ;
+
+foreach my $infilename (@infile) {
+    $reads = int(`fastcount $infilename`) ;
+    if ($paired) { $infilename =~ s/_1\./_%\./ ; }
+    $counter = 1;
+    $infilebase = $infilename ;
+    if ($paired) {$infilebase =~ s/(.*\/)*(.*?)_%(\.fq)*(\.gz)*/$2/ }
+    else         {$infilebase =~ s/(.*\/)*(.*?)(\.fq)*(\.gz)*/$2/ }
+    if ($verbose) {print "# Beginning file $infilename  (basename: $infilebase)\n";}
+
+    $scoresumfile = $infilename ;
+    if    ($scoresumfile =~ s/\.[12]\.fq/\.scoresum/ ) {print "Found paired-data scoresum file\n"; }
+    elsif ($scoresumfile =~ s/\.fq/\.scoresum/ ) {print "Found single-end scoresum file\n"; }
+    else  {print "Can't find scoresum file for infile $infilename\n"}
+    if (-f $scoresumfile && $scoresumfile ne $infilename) {
+	$rawreads = int(`grep '^Reads' $scoresumfile |sed 's/.*: //'`) ;
+	print OUT "$infilebase\t0_reads\tfile\t$reads\n" ;
+	print OUT "$infilebase\t0_rawreads\tfile\t$rawreads\n" ;
+	print OUT "$infilebase\t0_rejectedreads\tfile\t", $rawreads - $reads ,"\n" ;
+    } else {
+	print OUT "$infilebase\t0_reads\tfile\t$reads\n" ;
+    }
+   
+    foreach my $indexname (@index) {
+	$indexbase = $indexname ;
+	$indexbase =~ s/(.*\/)*(.*)/$2/ ;
+	$outfile = $infilebase.'_'.$counter.'_'.$indexbase ;
+
+	if ($paired) {
+	    $bowtie2inputstring = "-1 $infilename -2 $infilename";
+	    $bowtie2inputstring =~ s/%/1/ ;
+	    $bowtie2inputstring =~ s/%/2/ ;	    
+	    $unhit = $outfile.'_unhit_%.fq.gz' ;
+	    $unhitstring = '--un-conc-gz '.$unhit ;
+	}
+	else { 
+	    $bowtie2inputstring = "-U $infilename" ;
+	    $unhit = $outfile.'_unhit.fq.gz' ;
+	    $unhitstring = '--un-gz '.$unhit ;
+	}
+
+	## ALL ALIGNMENT DONE HERE
+	$command = "bowtie2 --$align --threads $threads $unhitstring -x $indexname $bowtie2inputstring | samtools view -F 4 -Sb - | samtools sort - $outfile\_0_entire" ;
+	if ($verbose) {print "# Alignment cycle $counter...\n$command\n" ;}
+	if ($noalign) {print "bypassing alignment\n";}
+	else          {system $command ; }
+
+	## SORTING THE MAPPED READS INTO BAM PILES USING BED FILES (NO COUNTING YET)
+	@beds = <$indexname*.bed> ;
+	if (scalar @beds > 0 && ! $nobed) {  
+	    $quotemetaindex = quotemeta($indexname) ; 
+	    my $bedtoolscmd = "cat $outfile\_0_entire.bam | tee " ;
+	    foreach my $bed ( @beds ) {	
+		$basebed = $bed ;
+		$basebed =~ s/$quotemetaindex\_(.*)\.bed/$1/ ;
+		$bedtoolscmd .= " >(intersectBed -u -f 0.5 -abam stdin -b $bed >$outfile\_$basebed.bam) " ;
+	    }
+	    ## the sleep command seems necessary to give the filesystem a second to close all the files before next stage
+	    $bedtoolscmd .= "> /dev/null; sleep 2" ;
+	    if ($verbose) {print "$bedtoolscmd\n";}
+	    system_bash $bedtoolscmd ;
+	} 
+
+	## ACTUAL COUNTING HAPPENS HERE
+	my @bamfiles = <$outfile*.bam> ;
+	foreach ( @bamfiles ) {
+	    my $bamsuffix = $_ ;
+	    $bamsuffix =~ s/$infilebase\_(.*)\.bam/$1/ ;
+	    if ($paired) { $bamcount = `samtools view -f 66 -c $_` }
+	    else         { $bamcount = `samtools view -F 4 -c $_` }
+	    chomp $bamcount ;
+	    if (scalar @bamfiles > 1 && $_ eq $bamfiles[0]) {print OUT "$infilebase\t$bamsuffix\tcheck\t$bamcount\n" ;}
+	    else {print OUT "$infilebase\t$bamsuffix\taligned\t$bamcount\n" ;}
+	}
+    
+	## GET READY FOR NEXT GENOME ALIGNMENT (SAME SAMPLE)
+	$infilename = $unhit ; 
+	$counter++ ;
+    }
+
+    my $temp = $unhit ; $temp =~ s/%/1/ ; $unmapped = int(`fastcount $temp`);
+    print OUT "$infilebase\tunmapped\tunmapped\t$unmapped\n" ;	
+}
+
+close OUT;
+
+system("R CMD BATCH --vanilla --slave $BIN_PATH/fastqat.R")

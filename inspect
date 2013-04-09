@@ -1,0 +1,8 @@
+#!/bin/bash  
+#usage inspect.sh filetopreview  
+#inspect function credit : http://www.drbunsen.org/  
+i() {  
+     (head -n 5;tail -n 5) < "$1" | column -t   
+}  
+#calls the function  
+i $1  

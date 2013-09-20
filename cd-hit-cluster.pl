@@ -5,7 +5,7 @@ use warnings;
 
 my %seq;
 my $header;
-
+my $total;
 
 open FASTA, "$ARGV[0]";
 while (<FASTA>) {
@@ -22,9 +22,14 @@ while (<CLSTR>) {
     chomp;
     if ( m/^>/ ) { $header = $_ ; next; }
     $counts{$header} ++;
+    $total ++;
     if ( m/.*(>[^\.]+)\.\.\. \*$/ ) { $clstr{$header} = "$1" ;}
 }
 
 foreach my $key (sort {$counts{$b} <=> $counts{$a} } keys %counts) {
-    print "$key count=$counts{$key} rep=$clstr{$key}\n$seq{$clstr{$key}}\n";
+if ($counts{$key}/$total > 0.001) {
+	print "$key count=$counts{$key} (";
+	printf("%.1f", 100*$counts{$key}/$total);
+	print "%) rep=$clstr{$key}\n$seq{$clstr{$key}}\n";
+}
 }

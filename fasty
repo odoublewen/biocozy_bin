@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+#
+
+# import modules used here -- sys is a very standard one
+import sys, argparse, logging, gzip, re
+from Bio import SeqIO
+
+
+# Gather our code in a main() function
+def main(args, loglevel):
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
+
+    global query
+    query = dict()
+    if args.query:
+        query[args.query] = 1
+    elif args.filterfile:
+        qf = open(args.filterfile, 'r')
+        for line in qf:
+            query[line.strip()] = 1
+
+    if args.fastx[-3:] == '.gz':
+        fh = gzip.GzipFile(args.fastx, 'r')
+    else:
+        fh = open(args.fastx, 'r')
+
+    for line in fh:
+        if line[0] == '>':
+            filetype = 'fasta'
+        elif line[0] == '@':
+            filetype = 'fastq'
+        else:
+            logging.critical("Cannot guess file type for %s" % args.fastx)
+            exit()
+        break
+
+    logging.debug("Reading file %s as filetype %s" % (args.fastx, filetype))
+    fh.seek(0)
+
+    if args.fasta:
+        outformat = 'fasta'
+    else:
+        outformat = filetype
+
+    for seq in SeqIO.parse(fh, format=filetype):
+        if ismatch(seq.id):
+            if (args.reverse):
+                pass
+            else:
+                SeqIO.write(seq, sys.stdout, format = outformat)
+        else:
+            if (args.reverse):
+                SeqIO.write(seq, sys.stdout, format = outformat)
+            else:
+                pass
+
+def ismatch(id):
+    if args.grep:
+        for q in query.keys():
+            if re.search(q, id):
+                return True
+    else:
+        if id in query:
+            return True
+    return False
+
+# Standard boilerplate to call the main() function to begin
+# the program.
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Does a thing to some stuff.",
+        epilog="As an alternative to the commandline, params can be placed in a file, one per line, and specified on the commandline like '%(prog)s @params.conf'.",
+        fromfile_prefix_chars='@')
+    # TODO Specify your real parameters here.
+    parser.add_argument(
+        "fastx",
+        help="fasta or fastq file to search (may be gzipped if suffix = .gz)",
+        metavar="FASTX")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "-q",
+        "--query",
+        help="search term"
+    )
+    group.add_argument(
+        "-f",
+        "--filterfile",
+        help="file with list of query terms"
+    )
+    parser.add_argument(
+        "-r",
+        "--reverse",
+        help="removes records with given terms (reverse of default behavior)",
+        action="store_true")
+    parser.add_argument(
+        "-g",
+        "--grep",
+        help="grep matching of query term (default is exact match)",
+        action="store_true")
+
+    parser.add_argument(
+        "--fasta",
+        help="output sequences as fasta (even if fastq input)",
+        action="store_true")
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        help="increase output verbosity",
+        action="store_true")
+    args = parser.parse_args()
+
+    # Setup logging
+    if args.verbose:
+        loglevel = logging.DEBUG
+    else:
+        loglevel = logging.INFO
+
+    main(args, loglevel)

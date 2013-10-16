@@ -1,0 +1,6 @@
+#!/bin/sh
+aligned=`samtools view -c -F 4 $1`
+total=`samtools view -c $1`
+percent=`echo $aligned/$total | bc -l`
+
+printf "%s\t%d\t%d\t%0.3f\n" $1 $aligned $total $percent

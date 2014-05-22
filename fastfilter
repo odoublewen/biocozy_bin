@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 #
 
-# import modules used here -- sys is a very standard one
-import sys, argparse, logging, gzip, re
+import sys
+import argparse
+import logging
+import gzip
+import re
 from Bio import SeqIO
 
 
@@ -11,13 +14,14 @@ def main(args, loglevel):
     logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
 
     global query
-    query = dict()
+    query = []
     if args.query:
-        query[args.query] = 1
-    elif args.filterfile:
+        query.append(args.query)
+    else:
         qf = open(args.filterfile, 'r')
         for line in qf:
-            query[line.strip()] = 1
+            query.append(line.strip())
+    query = set(query)
 
     if args.fastx[-3:] == '.gz':
         fh = gzip.GzipFile(args.fastx, 'r')
@@ -44,19 +48,19 @@ def main(args, loglevel):
 
     for seq in SeqIO.parse(fh, format=filetype):
         if ismatch(seq.id):
-            if (args.reverse):
+            if args.reverse:
                 pass
             else:
                 SeqIO.write(seq, sys.stdout, format = outformat)
         else:
-            if (args.reverse):
+            if args.reverse:
                 SeqIO.write(seq, sys.stdout, format = outformat)
             else:
                 pass
 
 def ismatch(id):
     if args.grep:
-        for q in query.keys():
+        for q in query:
             if re.search(q, id):
                 return True
     else:
@@ -71,7 +75,6 @@ if __name__ == '__main__':
         description="Does a thing to some stuff.",
         epilog="As an alternative to the commandline, params can be placed in a file, one per line, and specified on the commandline like '%(prog)s @params.conf'.",
         fromfile_prefix_chars='@')
-    # TODO Specify your real parameters here.
     parser.add_argument(
         "fastx",
         help="fasta or fastq file to search (may be gzipped if suffix = .gz)",

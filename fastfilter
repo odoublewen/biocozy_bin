@@ -59,10 +59,14 @@ def main(args, loglevel):
                 else:
                     pass
     except IOError:
-        # try:
-        SeqIO.close()
-        # except IOError:
-        #     pass
+        try:
+            sys.stdout.close()
+        except IOError:
+            pass
+        try:
+            sys.stderr.close()
+        except IOError:
+            pass
 
 
 def ismatch(id):

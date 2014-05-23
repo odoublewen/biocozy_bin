@@ -46,17 +46,24 @@ def main(args, loglevel):
     else:
         outformat = filetype
 
-    for seq in SeqIO.parse(fh, format=filetype):
-        if ismatch(seq.id):
-            if args.reverse:
-                pass
+    try:
+        for seq in SeqIO.parse(fh, format=filetype):
+            if ismatch(seq.id):
+                if args.reverse:
+                    pass
+                else:
+                    SeqIO.write(seq, sys.stdout, format=outformat)
             else:
-                SeqIO.write(seq, sys.stdout, format = outformat)
-        else:
-            if args.reverse:
-                SeqIO.write(seq, sys.stdout, format = outformat)
-            else:
-                pass
+                if args.reverse:
+                    SeqIO.write(seq, sys.stdout, format=outformat)
+                else:
+                    pass
+    except IOError:
+        # try:
+        SeqIO.close()
+        # except IOError:
+        #     pass
+
 
 def ismatch(id):
     if args.grep:

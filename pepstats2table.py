@@ -24,7 +24,7 @@ def run_pepstats(infile):
     for line in inf:
         temp_outfile.write('>%s\n%s\n' % (line, line))
 
-    subprocess.call(['pepstats', '-sequence', temp_outfile.name, '-outfile', pepstats_outfile])
+    subprocess.call(['pepstats', '-auto', '-sequence', temp_outfile.name, '-outfile', pepstats_outfile])
 
     temp_outfile.close()
     delete_pepstats_file = True

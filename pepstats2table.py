@@ -22,7 +22,13 @@ def run_pepstats(infile):
     pepstats_outfile = temp_outfile.name + '_pepstats'
 
     for line in inf:
-        temp_outfile.write('>%s\n%s\n' % (line, line))
+        fields = line.strip().split()
+        if len(fields) == 1:
+            temp_outfile.write('>%s\n%s\n' % (fields[0], fields[0]))
+        elif len(fields) == 2:
+            temp_outfile.write('>%s\n%s\n' % (fields[0], fields[1]))
+        else:
+            raise RuntimeError('Input file should contain either 1 or 2 columns')
 
     subprocess.call(['pepstats', '-auto', '-sequence', temp_outfile.name, '-outfile', pepstats_outfile])
 

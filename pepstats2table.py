@@ -2,48 +2,90 @@
 #
 __author__ = 'Owen Solberg'
 
-
-# import modules used here -- sys is a very standard one
-import sys, argparse, logging, re
+import argparse
+import logging
+import re
 import pandas as pd
 import os
+import sys
+import tempfile
+import subprocess
 
-# Gather our code in a main() function
-def main(infile, loglevel):
+
+def run_pepstats(infile):
+    if infile:
+        inf = open(infile)
+    else:
+        inf = sys.stdin
+
+    temp_outfile = tempfile.NamedTemporaryFile()
+    pepstats_outfile = temp_outfile.name + '_pepstats'
+
+    for line in inf:
+        temp_outfile.write('>%s\n%s\n' % (line, line))
+
+    subprocess.call(['pepstats', '-sequence', temp_outfile.name, '-outfile', pepstats_outfile])
+
+    temp_outfile.close()
+    delete_pepstats_file = True
+
+    return pepstats_outfile, delete_pepstats_file
+
+
+
+def flatten_pepstat_output(infile, outfile, delete_pepstats_file=False):
     logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
 
     stat_name = ['seqid', 'stat', 'value']
     stat_data = []
-    outfile = os.path.splitext(infile)[0] + '.csv'
 
     fh = open(infile, 'rb')
     for line in fh:
+
+        # ignore lines like:
+        # A280 Molar Extinction Coefficients  = 0 (reduced)   0 (cystine bridges)
+        # A280 Extinction Coefficients 1mg/ml = 0.000 (reduced)   0.000 (cystine bridges)
+        # Improbability of expression in inclusion bodies = 0.966
+        res = re.search('expression in inclusion bodies|Extinction Coefficients', line)
+        if res:
+            continue
+
+        # matches lines like:
+        # PEPSTATS of XY149969_PLKRGVVVLNGSG from 1 to 13
         res = re.match('PEPSTATS of (\S+)', line)
         if res:
             seqid = res.group(1)
             continue
 
+        # matches lines like:
+        # G = Gly         3               23.077          2.747
         res = re.match('(?P<aa>[A-Z]) = ...\s+(?P<number>\S+)\s+(?P<mole>\S+)\s+(?P<dayhoff>\S+)', line)
         if res:
-            stat_data.append([seqid, res.group('aa') + '__count', res.group('number')])
-            stat_data.append([seqid, res.group('aa') + '__mole', res.group('mole')])
-            stat_data.append([seqid, res.group('aa') + '__dayhoff', res.group('dayhoff')])
+            stat_data.append([seqid, 'aa__' + res.group('aa') + '__count', res.group('number')])
+            stat_data.append([seqid, 'aa__' + res.group('aa') + '__mole', res.group('mole')])
+            stat_data.append([seqid, 'aa__' + res.group('aa') + '__dayhoff', res.group('dayhoff')])
             continue
 
-        res = re.match('(?P<property>\w+)\s+\(\S\)\s+(?P<number>\S+)\s+(?P<mole>\S+)', line)
+        # matches lines like:
+        # Tiny            (A+C+G+S+T)             4               30.769
+        res = re.match('(?P<property>\w+)\s+\(\S+\)\s+(?P<number>\S+)\s+(?P<mole>\S+)', line)
         if res:
-            stat_data.append([seqid, res.group('property') + '___count', res.group('number')])
-            stat_data.append([seqid, res.group('property') + '___mole', res.group('mole')])
+            stat_data.append([seqid, 'prop__' + res.group('property') + '__count', res.group('number')])
+            stat_data.append([seqid, 'prop__' + res.group('property') + '__mole', res.group('mole')])
             continue
 
+        # matches lines like:
+        # Molecular weight = 1295.55              Residues = 13
         resiter = re.finditer('(?P<property>[^\t]+) += (?P<value>\S+)', line)
         for res in resiter:
             if res:
-                stat_data.append([seqid, res.group('property').strip(), res.group('value').strip()])
+                stat_data.append([seqid, 'meta__' + res.group('property').strip().replace(' ', '_'), res.group('value').strip()])
 
     fh.close()
-    df = pd.DataFrame(data=stat_data, columns=stat_name)
+    if delete_pepstats_file:
+        os.remove(infile)
 
+    df = pd.DataFrame(data=stat_data, columns=stat_name)
     df.pivot(index='seqid', columns='stat', values='value').to_csv(outfile)
 
 
@@ -53,8 +95,13 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "infile",
-        help="input, which is the raw output of pepstats",
+        nargs='?',
+        help="input, which is a plain list of peptide seqeunces, one per line",
         metavar="infile")
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        help="file name for output")
     parser.add_argument(
         "-v",
         "--verbose",
@@ -62,10 +109,19 @@ if __name__ == '__main__':
         action="store_true")
     args = parser.parse_args()
 
-    # Setup logging
     if args.verbose:
         loglevel = logging.DEBUG
     else:
         loglevel = logging.INFO
 
-    main(infile=args.infile, loglevel=loglevel)
+    if args.outfile is None:
+        if args.infile is None:
+            outfile = "pepstats2table.csv"
+        else:
+            outfile = os.path.splitext(args.infile)[0] + '.csv'
+    else:
+        outfile = args.outfile
+
+    pepstats_outfile, delete_pepstats_file = run_pepstats(infile=args.infile)
+
+    flatten_pepstat_output(infile=pepstats_outfile, outfile=outfile, delete_pepstats_file=delete_pepstats_file)

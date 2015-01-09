@@ -10,20 +10,24 @@ def main(args, loglevel):
     infh = open(args.fasta, "rU")
     align = AlignIO.read(infh, "fasta")
 
-    refgaps = []
-    for pos, base in enumerate(align[0]):
-        if base == '-':
-            refgaps.append(pos)
+    # the first sequence (align[0]) is assumed to be the reference
+    # locate the positions where the reference is gapped
+    refgaps = [pos for pos, base in enumerate(align[0]) if base == '-']
 
+    # remove alignment columns where the reference is gapped
     for pos in reversed(refgaps):
         align = align[:, :pos] + align[:, pos+1:]
 
+    # loop thru each additional sequence in the alignment
     for seqidx, seq in enumerate(align):
         seqmut = seq.seq.tomutable()
         for pos, base in enumerate(seq):
             # print seq.id, pos, base
             if not base.upper() in 'ATGC':
-                seqmut[pos] = 'n'
+                if args.npadding:
+                    seqmut[pos] = 'n'
+                else:
+                    seqmut[pos] = align[0][pos].lower()
         seq.seq = seqmut
 
     AlignIO.write(align, sys.stdout, "fasta")
@@ -39,6 +43,11 @@ if __name__ == '__main__':
         "fasta",
         help="aligned fasta file to read",
         metavar="fasta")
+    parser.add_argument(
+        "-n",
+        "--npadding",
+        help="pad deletions with n characters, rather than the reference base (default)",
+        action="store_true")
     parser.add_argument(
         "-v",
         "--verbose",

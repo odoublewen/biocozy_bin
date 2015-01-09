@@ -12,6 +12,7 @@ def main(args, loglevel):
 
     # the first sequence (align[0]) is assumed to be the reference
     # locate the positions where the reference is gapped
+    master_ref_id = align[0].id
     refgaps = [pos for pos, base in enumerate(align[0]) if base == '-']
 
     # remove alignment columns where the reference is gapped
@@ -29,6 +30,10 @@ def main(args, loglevel):
                 else:
                     seqmut[pos] = align[0][pos].lower()
         seq.seq = seqmut
+        if args.rename:
+            seq.id = master_ref_id + '__' + seq.id
+            seq.name = seq.id
+            seq.description = seq.id
 
     AlignIO.write(align, sys.stdout, "fasta")
 
@@ -47,6 +52,10 @@ if __name__ == '__main__':
         "-n",
         "--npadding",
         help="pad deletions with n characters, rather than the reference base (default)",
+        action="store_true")
+    parser.add_argument(
+        "--rename",
+        help="appends name of master reference to each seqeunce",
         action="store_true")
     parser.add_argument(
         "-v",

@@ -21,17 +21,17 @@ def main(args, loglevel):
 
     # loop thru each additional sequence in the alignment
     for seqidx, seq in enumerate(align):
-        seqmut = seq.seq.tomutable()
-        for pos, base in enumerate(seq):
+        seqmut = seq.upper().seq.tomutable()
+        for pos, base in enumerate(seq.upper()):
             # print seq.id, pos, base
-            if not base.upper() in 'ATGC':
+            if not base in 'ATGC':
                 if args.npadding:
                     seqmut[pos] = 'n'
                 else:
                     seqmut[pos] = align[0][pos].lower()
         seq.seq = seqmut
         if args.rename:
-            seq.id = master_ref_id + '__' + seq.id
+            seq.id = master_ref_id + '__M__' + seq.id
             seq.name = seq.id
             seq.description = seq.id
 

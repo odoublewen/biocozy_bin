@@ -18,8 +18,8 @@ def run_pepstats(infile):
     else:
         inf = sys.stdin
 
-    temp_outfile = tempfile.NamedTemporaryFile()
-    pepstats_outfile = temp_outfile.name + '_pepstats'
+    temp_outfile = tempfile.NamedTemporaryFile(delete=False)
+    temp_filename = temp_outfile.name
 
     for line in inf:
         fields = line.strip().split()
@@ -27,25 +27,27 @@ def run_pepstats(infile):
             temp_outfile.write('>%s\n%s\n' % (fields[0], fields[0]))
         elif len(fields) == 2:
             temp_outfile.write('>%s\n%s\n' % (fields[0], fields[1]))
+        elif len(fields) == 0:
+            pass
         else:
             raise RuntimeError('Input file should contain either 1 or 2 columns')
-
-    subprocess.call(['pepstats', '-auto', '-sequence', temp_outfile.name, '-outfile', pepstats_outfile])
-
     temp_outfile.close()
-    delete_pepstats_file = True
 
-    return pepstats_outfile, delete_pepstats_file
+    subprocess.call(['pepstats', '-auto', '-sequence', temp_filename, '-outfile', temp_filename + '_pepstats'])
+
+    delete_temp_file = True
+
+    return temp_filename, delete_temp_file
 
 
 
-def flatten_pepstat_output(infile, outfile, delete_pepstats_file=False):
+def flatten_pepstat_output(temp_filename, outfile, delete_temp_file=True):
     logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
 
     stat_name = ['seqid', 'stat', 'value']
     stat_data = []
 
-    fh = open(infile, 'rb')
+    fh = open(temp_filename + '_pepstats', 'rb')
     for line in fh:
 
         # ignore lines like:
@@ -88,8 +90,9 @@ def flatten_pepstat_output(infile, outfile, delete_pepstats_file=False):
                 stat_data.append([seqid, 'meta__' + res.group('property').strip().replace(' ', '_'), res.group('value').strip()])
 
     fh.close()
-    if delete_pepstats_file:
-        os.remove(infile)
+    if delete_temp_file:
+        os.remove(temp_filename)
+        os.remove(temp_filename + '_pepstats')
 
     df = pd.DataFrame(data=stat_data, columns=stat_name)
     df.pivot(index='seqid', columns='stat', values='value').to_csv(outfile)
@@ -128,6 +131,6 @@ if __name__ == '__main__':
     else:
         outfile = args.outfile
 
-    pepstats_outfile, delete_pepstats_file = run_pepstats(infile=args.infile)
+    temp_filename, delete_temp_file = run_pepstats(infile=args.infile)
 
-    flatten_pepstat_output(infile=pepstats_outfile, outfile=outfile, delete_pepstats_file=delete_pepstats_file)
+    flatten_pepstat_output(temp_filename=temp_filename, outfile=outfile, delete_temp_file=delete_temp_file)

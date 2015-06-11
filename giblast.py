@@ -23,7 +23,7 @@ def main(entrez, output, query, blastdb, email):
 
     with open(output + '_gilist.txt', 'wb') as gi_out:
         for rec in record['IdList']:
-            gi_out.write(rec)
+            gi_out.write('%s\n' % rec)
 
     with open(output + '.fasta', 'wb') as fasta_out:
         subprocess.call(['blastdbcmd', '-db', blastdb, '-entry_batch', output + '_gilist.txt'], stdout=fasta_out)

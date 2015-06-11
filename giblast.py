@@ -20,7 +20,7 @@ def main(entrez, output, query, blastdb, email):
     record = Entrez.read(handle)
     logging.info('Found %d records using search term %s' % (len(record['IdList']), query))
 
-    with open(output + '_gilist.txt') as giout:
+    with open(output + '_gilist.txt', 'wb') as giout:
         for rec in record['IdList']:
             giout.write(rec)
 

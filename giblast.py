@@ -16,15 +16,17 @@ def main(entrez, output, query, blastdb, email):
             raise RuntimeError('No email provided, and cannot find it in the git global config')
         logging.info('No email provided, so using %s' % email)
 
+    logging.info('Querying NCBI Entrez with %s' % query)
     handle = Entrez.esearch(db=entrez, retmax=100000, term=query, email=email)
     record = Entrez.read(handle)
-    logging.info('Found %d records using search term %s' % (len(record['IdList']), query))
+    logging.info('Found %d records' % len(record['IdList']))
 
-    with open(output + '_gilist.txt', 'wb') as giout:
+    with open(output + '_gilist.txt', 'wb') as gi_out:
         for rec in record['IdList']:
-            giout.write(rec)
+            gi_out.write(rec)
 
-    subprocess.call(['blastdbcmd', '-db', blastdb, '-entry_batch', output + '_gilist.txt'], stdout=output + '.fasta')
+    with open(output + '.fasta', 'wb') as fasta_out:
+        subprocess.call(['blastdbcmd', '-db', blastdb, '-entry_batch', output + '_gilist.txt'], stdout=fasta_out)
 
 
 if __name__ == '__main__':

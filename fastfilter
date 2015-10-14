@@ -8,25 +8,76 @@ import gzip
 import re
 from Bio import SeqIO
 
+class Filter:
+    def __init__(self, query, filterfile, grep, reverse, length):
 
-# Gather our code in a main() function
+        self.filters = []
+        self.grep = grep
+        self.reverse = reverse
+
+        if query:
+            self.queryset = [query]
+            self.filters.append('querymatch')
+        elif filterfile:
+            with open(args.filterfile, 'r') as qf:
+                self.queryset = qf.read().splitlines()
+            self.queryset = set(self.queryset)
+            self.filters.append('querymatch')
+
+        if length:
+            relen = re.match(r'([0-9]*)-([0-9]*)', length)
+            try:
+                self.minlen = int(relen.group(1))
+            except ValueError:
+                self.minlen = 0
+            try:
+                self.maxlen = int(relen.group(2))
+            except ValueError:
+                self.maxlen = float('inf')
+            self.filters.append('lengthmatch')
+
+        if not self.filters:
+            raise RuntimeError('You must specify a query and/or a length filter!')
+
+    def querymatch(self, seq):
+        hit = False
+        if self.grep:
+            for q in self.queryset:
+                if re.search(q, seq.id):
+                    hit = True
+                    break
+        else:
+            if seq.id in self.queryset:
+                hit = True
+
+        if args.reverse:
+            hit = not hit
+
+        return hit
+
+    def lengthmatch(self, seq):
+        if self.minlen <= len(seq) <= self.maxlen:
+            return True
+        else:
+            return False
+
+    def filter(self, seq):
+
+        results = [getattr(self, method)(seq) for method in self.filters]
+
+        return all(results)
+
+
+
 def main(args, loglevel):
     logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
 
-    global query
-    query = []
-    if args.query:
-        query.append(args.query)
-    else:
-        qf = open(args.filterfile, 'r')
-        for line in qf:
-            query.append(line.strip())
-    query = set(query)
+    myfilter = Filter(args.query, args.filterfile, args.grep, args.reverse, args.length)
 
-    if args.fastx[-3:] == '.gz':
-        fh = gzip.GzipFile(args.fastx, 'r')
+    if args.file[-3:] == '.gz':
+        fh = gzip.GzipFile(args.file, 'r')
     else:
-        fh = open(args.fastx, 'r')
+        fh = open(args.file, 'r')
 
     for line in fh:
         if line[0] == '>':
@@ -34,11 +85,10 @@ def main(args, loglevel):
         elif line[0] == '@':
             filetype = 'fastq'
         else:
-            logging.critical("Cannot guess file type for %s" % args.fastx)
-            exit()
+            raise RuntimeError("Cannot guess file type for %s" % args.file)
         break
 
-    logging.debug("Reading file %s as filetype %s" % (args.fastx, filetype))
+    logging.debug("Reading file %s as filetype %s" % (args.file, filetype))
     fh.seek(0)
 
     if args.fasta:
@@ -48,16 +98,8 @@ def main(args, loglevel):
 
     try:
         for seq in SeqIO.parse(fh, format=filetype):
-            if ismatch(seq.id):
-                if args.reverse:
-                    pass
-                else:
-                    SeqIO.write(seq, sys.stdout, format=outformat)
-            else:
-                if args.reverse:
-                    SeqIO.write(seq, sys.stdout, format=outformat)
-                else:
-                    pass
+            if myfilter.filter(seq):
+                SeqIO.write(seq, sys.stdout, format=outformat)
     except IOError:
         try:
             sys.stdout.close()
@@ -69,28 +111,18 @@ def main(args, loglevel):
             pass
 
 
-def ismatch(id):
-    if args.grep:
-        for q in query:
-            if re.search(q, id):
-                return True
-    else:
-        if id in query:
-            return True
-    return False
 
-# Standard boilerplate to call the main() function to begin
-# the program.
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Does a thing to some stuff.",
-        epilog="As an alternative to the commandline, params can be placed in a file, one per line, and specified on the commandline like '%(prog)s @params.conf'.",
-        fromfile_prefix_chars='@')
+        description="Filters sequences (inclusive or exclusive) from a file (fasta or fastq) using either pattern "
+                    "matching of the ID line or sequence lengths.")
     parser.add_argument(
-        "fastx",
+        "file",
         help="fasta or fastq file to search (may be gzipped if suffix = .gz)",
-        metavar="FASTX")
-    group = parser.add_mutually_exclusive_group(required=True)
+        metavar="FILE")
+    group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "-q",
         "--query",
@@ -111,6 +143,11 @@ if __name__ == '__main__':
         "--grep",
         help="grep matching of query term (default is exact match)",
         action="store_true")
+
+    parser.add_argument(
+        "-l",
+        "--length",
+        help="length range, specified like 100-200 or -200 or 200-")
 
     parser.add_argument(
         "--fasta",

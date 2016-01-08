@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+import os
+import sys
+from pylibftdi import Device                                                                                                                                                                                
+from time import sleep
+dev = Device()
+
+channels = {'garden': ('\xff\x01\x01', '\xff\x01\x00'),
+            'trees':  ('\xff\x02\x01', '\xff\x02\x00'),
+            'front':  ('\xff\x03\x01', '\xff\x03\x00')}
+
+what = channels[sys.argv[1]]
+howlong = float(sys.argv[2]) * 60
+
+
+if howlong > 5000:
+    print("%d seconds is really long, are you sure?" % howlong)
+    sys.exit()
+
+try:
+    dev.write(what[0])
+    sleep(howlong)
+    dev.write(what[1])
+except: 
+    dev.write(what[1])

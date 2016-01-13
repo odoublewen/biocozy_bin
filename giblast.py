@@ -6,28 +6,32 @@ import sys, argparse
 import subprocess
 import logging
 
-def main(entrez, output, query, blastdb, email):
+def main(args):
+
+    #entrez, output, query, blastdb, email):
 
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
-    if email is None:
+    if args.email is None:
         email = subprocess.check_output(['git', 'config', '--global', 'user.email']).strip()
         if '@' not in email:
             raise RuntimeError('No email provided, and cannot find it in the git global config')
-        logging.info('No email provided, so using %s' % email)
+        logging.info('No email provided, so using %s (from git profile)' % email)
+    else:
+        email = args.email
 
-    logging.info('Querying NCBI Entrez with %s' % query)
-    handle = Entrez.esearch(db=entrez, retmax=100000, term=query, email=email)
+    logging.info('Querying NCBI Entrez with %s' % args.query)
+    handle = Entrez.esearch(db=args.entrez, retmax=args.retmax, term=args.query, email=email)
     record = Entrez.read(handle)
     logging.info('Found %d records' % len(record['IdList']))
 
-    with open(output + '_gilist.txt', 'wb') as gi_out:
+    with open(args.output + '_gilist.txt', 'wb') as gi_out:
         for rec in record['IdList']:
             gi_out.write('%s\n' % rec)
 
-    fasta_out = open(output + '.fasta', 'wb')
-    error_out = open(output + '_error.log', 'wb')
-    subprocess.call(['blastdbcmd', '-db', blastdb, '-entry_batch', output + '_gilist.txt'], stdout=fasta_out, stderr=error_out)
+    fasta_out = open(args.output + '.fasta', 'wb')
+    error_out = open(args.output + '_error.log', 'wb')
+    subprocess.call(['blastdbcmd', '-db', args.blast, '-entry_batch', args.output + '_gilist.txt'], stdout=fasta_out, stderr=error_out)
     fasta_out.close()
     error_out.close()
 
@@ -56,9 +60,14 @@ if __name__ == '__main__':
         default='refseq_protein',
         help="blast database")
     parser.add_argument(
+        "-m",
+        "--retmax",
+        default=10**9,
+        help="max results returned by entrez search")
+    parser.add_argument(
         "--email",
         help="email address")
     args = parser.parse_args()
 
-    main(entrez=args.entrez, output=args.output, query=args.query, blastdb=args.blast, email=args.email)
+    main(args)
 

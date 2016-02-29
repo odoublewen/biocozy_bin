@@ -56,6 +56,7 @@ use Bio::AlignIO;
 use Bio::SeqIO;
 use Bio::LocatableSeq;
 use Pod::Usage;
+use TryCatch;
 
 my $GeneticCode = Bio::Tools::CodonTable->new();
 my $needsHelp = '';
@@ -102,15 +103,17 @@ my $aln = Bio::AlignIO->new( -file   => "<$fasta_file", -format => 'fasta' );
 $aln = $aln->next_aln();
 my $aln2 = $aln;
 foreach my $seq ( $aln->each_seq() ) {
-
   my @warnings;
   my $seqid = $seq->id ;
   chomp $seqid;
+
+  my $new_gff_file = $seqid . '.gff';
+  my $new_fasta_file = $seqid . '.fa';
+
+    try  {
   
   # take the first sequence as the refseq
   unless (defined $refseq) { $refseq = $seq ; printf "Using %s as the reference\n", $seqid }
-
-  my $new_gff_file = $seqid . '.gff';
   ## Scan through GFF file and look up location for each feature for each seq in the alignment
   my $gffio = Bio::Tools::GFF->new( -file => "$gff_file", -gff_version => $gff_version );
   open NEWGFF, "> $new_gff_file";
@@ -166,7 +169,6 @@ foreach my $seq ( $aln->each_seq() ) {
   close NEWGFF;
   $gffio->close();
 
-  my $new_fasta_file = $seqid . '.fa';
   my $new_fasta = Bio::SeqIO->new( -file   => ">$new_fasta_file", -format => 'fasta' ) ;
   my $newseq = $seq->seq;
   $newseq =~ s/-//g ;
@@ -181,7 +183,13 @@ foreach my $seq ( $aln->each_seq() ) {
       unlink $new_gff_file;
     }
   }
+    }
+    catch {
+	print "Failed for $seqid";
+      unlink $new_fasta_file;
+      unlink $new_gff_file;
 
+    }
 }
 
 

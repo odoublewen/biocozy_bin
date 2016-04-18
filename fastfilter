@@ -16,11 +16,11 @@ class Filter:
         self.reverse = reverse
 
         if query:
-            self.queryset = [query]
+            self.queryset = [query.split(' ')[0]]
             self.filters.append('querymatch')
         elif filterfile:
             with open(args.filterfile, 'r') as qf:
-                self.queryset = qf.read().splitlines()
+                self.queryset = qf.read().splitlines().map(lambda x: x.split(' ')[0])
             self.queryset = set(self.queryset)
             self.filters.append('querymatch')
 

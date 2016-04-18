@@ -20,7 +20,7 @@ class Filter:
             self.filters.append('querymatch')
         elif filterfile:
             with open(args.filterfile, 'r') as qf:
-                self.queryset = qf.read().splitlines().map(lambda x: x.split(' ')[0])
+                self.queryset = [line.split(' ')[0] for line in qf.read().splitlines()]
             self.queryset = set(self.queryset)
             self.filters.append('querymatch')
 

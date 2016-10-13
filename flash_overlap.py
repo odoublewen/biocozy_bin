@@ -32,7 +32,7 @@ def main(file1, file2, flash):
             diff = l1[seqid] + l2[seqid] - lj[seqid]
         except KeyError:
             diff = None
-        print("{}\t{}\t{}\t{}".format(seqid, l1.get(seqid), l2.get(seqid), lj.get(seqid), diff))
+        print("{}\t{}\t{}\t{}\t{}".format(seqid, l1.get(seqid), l2.get(seqid), lj.get(seqid), diff))
 
 
 if __name__ == '__main__':

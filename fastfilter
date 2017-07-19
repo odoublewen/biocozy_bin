@@ -75,26 +75,28 @@ def main(args, loglevel):
     myfilter = Filter(args.query, args.filterfile, args.grep, args.reverse, args.length)
 
     if args.file[-3:] == '.gz':
-        fh = gzip.GzipFile(args.file, 'r')
+        fh = gzip.open(args.file, 'rt', encoding='utf-8')
     else:
         fh = open(args.file, 'r')
 
     for line in fh:
         if line[0] == '>':
             filetype = 'fasta'
+            break
         elif line[0] == '@':
             filetype = 'fastq'
+            break
         else:
             raise RuntimeError("Cannot guess file type for %s" % args.file)
-        break
-
-    logging.debug("Reading file %s as filetype %s" % (args.file, filetype))
-    fh.seek(0)
 
     if args.fasta:
         outformat = 'fasta'
     else:
         outformat = filetype
+
+    logging.debug("Reading file {} as filetype {}, will output as {}".format(args.file, filetype, outformat))
+    fh.seek(0)
+
 
     try:
         for seq in SeqIO.parse(fh, format=filetype):

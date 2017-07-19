@@ -2,11 +2,12 @@
 #
 
 import sys
+import os
 import argparse
 import logging
 import gzip
+import screed
 import time
-from Bio import SeqIO
 
 def main(args, loglevel):
 
@@ -30,7 +31,10 @@ def main(args, loglevel):
 
     logging.info("Indexing {} file {}".format(filetype, args.seqfile))
 
-    record_dict = SeqIO.index_db(args.seqfile + '.idx', args.seqfile, filetype)
+    if not os.path.isfile(args.seqfile + "_screed"):
+        screed.make_db(args.seqfile)
+
+    record_dict = screed.ScreedDB(args.seqfile)
 
     logging.info("Reading filter file {}".format(args.filterfile))
     with open(args.filterfile, 'r') as fh:
@@ -50,7 +54,7 @@ def main(args, loglevel):
                                  format(i, id_count, rate, time.asctime(time.localtime(time.time() + time_remain))))
                 try:
                     rec = record_dict[line.rstrip()]
-                    print(rec.format(filetype))
+                    print("@{name} {annotations}\n{sequence}\n+\n{quality}\n".format(**rec))
                 except KeyError:
                     logging.debug('record id {} not found'.format(line.strip()))
                     pass
